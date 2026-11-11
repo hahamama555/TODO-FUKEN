@@ -1,1 +1,259 @@
-# TODO-FUKEN
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>47都道府県 81マスゲーム</title>
+<style>
+*{box-sizing:border-box}
+:root{color-scheme:dark}
+body{
+  margin:0;background:#101b3b;color:#fff;
+  font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;
+  height:100svh;overflow:hidden;
+}
+.app{
+  height:100svh;height:100dvh;
+  display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top) 10px env(safe-area-inset-bottom);
+  gap:6px;max-width:600px;margin:auto;
+}
+header{text-align:center;flex-shrink:0}
+h1{font-size:clamp(17px,5vw,25px);margin:5px 0;color:#ffdf75}
+.subtitle{font-size:11px;color:#d5dcef;margin:0}
+.info{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:13px;font-weight:bold;flex-shrink:0;
+}
+#count{color:#ffdf75;font-size:17px}
+.stage{
+  width:min(100%, 48svh, 500px);
+  width:min(100%, 48dvh, 500px);
+  aspect-ratio:1/1;margin:auto;
+  flex-shrink:1;min-height:0;
+}
+.grid{
+  width:100%;height:100%;
+  display:grid;grid-template-columns:repeat(9,1fr);
+  grid-template-rows:repeat(9,1fr);
+  gap:2px;
+}
+.tile{
+  position:relative;min-width:0;min-height:0;
+  border:1px solid #b98d35;border-radius:4px;
+  background:linear-gradient(145deg,#263b69,#142449);
+  display:flex;align-items:center;justify-content:center;
+  text-align:center;overflow:hidden;
+  padding:1px;
+}
+.tile .label{
+  font-size:clamp(7px,2.3vw,12px);
+  line-height:1.15;font-weight:800;
+  overflow-wrap:anywhere;
+}
+.tile.star .label{font-size:clamp(13px,4vw,20px)}
+.tile.open{
+  background:transparent;border:1px solid #ffffff55;
+}
+.tile.open .label{display:none}
+.tile.open::after{
+  content:"";position:absolute;inset:0;
+  background-image:var(--photo);
+  background-size:900% 900%;
+  background-position:var(--x) var(--y);
+}
+.tile.open.no-photo{
+  background:#263b69;
+}
+.tile.open.no-photo::after{display:none}
+.controls{
+  display:grid;grid-template-columns:repeat(2,1fr);
+  gap:6px;flex-shrink:0;
+}
+button{
+  border:0;border-radius:9px;padding:11px 5px;
+  font-size:13px;font-weight:bold;color:#fff;
+  background:#34558b;min-height:40px;
+}
+button.primary{background:#b78325;color:#171b2d}
+button.reset{background:#743d52}
+.photo-area{
+  display:flex;align-items:center;justify-content:center;
+  gap:8px;flex-shrink:0;font-size:12px;
+}
+input[type=file]{max-width:190px;font-size:11px}
+.status{
+  text-align:center;font-size:11px;color:#cbd5ee;
+  flex-shrink:0;min-height:15px;
+}
+@media(max-height:700px){
+  .app{gap:4px}
+  h1{font-size:17px;margin:2px 0}
+  .subtitle{font-size:10px}
+  .stage{width:min(100%,43dvh,500px)}
+  button{padding:8px 4px;min-height:34px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🗾 47都道府県を見つけよう！</h1>
+    <p class="subtitle">⭐をOPENして隠された写真を見つけてね</p>
+  </header>
+
+  <div class="info">
+    <span>OPENしたマス</span>
+    <span id="count">0 / 81</span>
+  </div>
+
+  <div class="stage">
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" onclick="openNext()">⭐ 次の1マスOPEN</button>
+    <button onclick="openRandom()">🔀 ランダムOPEN</button>
+    <button onclick="undo()">↩ 1マス戻す</button>
+    <button class="reset" onclick="resetBoard()">⟲ 全81マスを隠す</button>
+  </div>
+
+  <div class="photo-area">
+    <label for="photo">📷 写真を選択</label>
+    <input id="photo" type="file" accept="image/*">
+  </div>
+  <div class="status" id="status">写真を選んでゲームスタート！</div>
+</div>
+
+<script>
+const prefectures = [
+"北海道",
+"青森県","岩手県","宮城県","秋田県","山形県","福島県",
+"茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+"新潟県","富山県","石川県","福井県","山梨県","長野県",
+"岐阜県","静岡県","愛知県","三重県",
+"滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県",
+"鳥取県","島根県","岡山県","広島県","山口県",
+"徳島県","香川県","愛媛県","高知県",
+"福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県",
+"沖縄県"
+];
+
+let items=[];
+let opened=[];
+let photoUrl=null;
+
+const grid=document.getElementById("grid");
+const count=document.getElementById("count");
+const status=document.getElementById("status");
+
+function shuffle(array){
+  const a=[...array];
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function createBoard(){
+  // 81マス中34マスをランダムに星にする
+  const starPositions=new Set(
+    shuffle(Array.from({length:81},(_,i)=>i)).slice(0,34)
+  );
+
+  let prefectureIndex=0;
+  items=Array.from({length:81},(_,i)=>{
+    if(starPositions.has(i)){
+      return {type:"star",label:"⭐"};
+    }
+    return {
+      type:"prefecture",
+      label:prefectures[prefectureIndex++]
+    };
+  });
+  opened=[];
+  render();
+}
+
+function render(){
+  grid.innerHTML="";
+  items.forEach((item,index)=>{
+    const tile=document.createElement("div");
+    tile.className="tile";
+    if(item.type==="star")tile.classList.add("star");
+
+    const label=document.createElement("span");
+    label.className="label";
+    label.textContent=item.label;
+    tile.appendChild(label);
+
+    if(opened.includes(index)){
+      tile.classList.add("open");
+      if(!photoUrl)tile.classList.add("no-photo");
+    }
+
+    const x=(index%9)*12.5;
+    const y=Math.floor(index/9)*12.5;
+    tile.style.setProperty("--x",x+"%");
+    tile.style.setProperty("--y",y+"%");
+    if(photoUrl){
+      tile.style.setProperty("--photo",`url("${photoUrl}")`);
+    }
+
+    grid.appendChild(tile);
+  });
+
+  count.textContent=opened.length+" / 81";
+  if(opened.length===81){
+    status.textContent="🎉 全81マスOPEN！完成！";
+  }else{
+    status.textContent=opened.length+"マスOPEN中";
+  }
+}
+
+function openIndex(index){
+  if(index<0||index>=81||opened.includes(index))return;
+  opened.push(index);
+  render();
+}
+
+function openNext(){
+  const next=items.findIndex((_,i)=>!opened.includes(i));
+  if(next===-1)return;
+  openIndex(next);
+}
+
+function openRandom(){
+  const remaining=items
+    .map((_,i)=>i)
+    .filter(i=>!opened.includes(i));
+  if(!remaining.length)return;
+  openIndex(remaining[Math.floor(Math.random()*remaining.length)]);
+}
+
+function undo(){
+  if(!opened.length)return;
+  opened.pop();
+  render();
+}
+
+function resetBoard(){
+  createBoard();
+  status.textContent="⭐ 星の位置をシャッフルしました！";
+}
+
+document.getElementById("photo").addEventListener("change",e=>{
+  const file=e.target.files[0];
+  if(!file)return;
+  if(photoUrl)URL.revokeObjectURL(photoUrl);
+  photoUrl=URL.createObjectURL(file);
+  render();
+  status.textContent="写真をセットしました！ゲームスタート！";
+});
+
+createBoard();
+</script>
+</body>
+</html>
